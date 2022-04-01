@@ -1,9 +1,9 @@
 //! Track the number of extant instances of your types.
 //! 
 //! ## Example
-//! ```rust
+//! ```
 //! // 1. import these three items:
-//! use type_census::{Census, Instance, Tabulate};
+//! use type_census::{counter, Instance, Tabulate};
 //! 
 //! #[derive(Clone)]
 //! pub struct Foo<T> {
@@ -32,143 +32,119 @@
 //! }
 //! 
 //! // 5. finally, implement `Tabulate` like this:
-//! impl<T: 'static> Tabulate for Foo<T> {
-//!     Census!();
+//! impl<T> Tabulate for Foo<T> {
+//!     counter!();
 //! }
 //! 
 //! fn main() {
-//!     use std::iter;
-//! 
 //!     // you can now query the number of extant instances of `Foo`!
 //!     assert_eq!(Foo::<i8>::instances(), 0);
 //!     assert_eq!(Foo::<u8>::instances(), 0);
 //! 
-//!     let mut bar: Vec<Foo<i8>> = iter::repeat(Foo::new(0i8)).take(10).collect();
+//!     // the same counter is shared for all generic instantiations
+//!     let mut bar: Vec<Foo<i8>> = vec![Foo::new(0i8); 10];
 //! 
 //!     assert_eq!(Foo::<i8>::instances(), 10);
-//!     assert_eq!(Foo::<u8>::instances(), 0);
+//!     assert_eq!(Foo::<u8>::instances(), 10);
 //! 
-//!     let _baz: Vec<Foo<u8>> = iter::repeat(Foo::new(0u8)).take(5).collect();
+//!     let _baz: Vec<Foo<u8>> = vec![Foo::new(0u8); 5];
 //! 
-//!     assert_eq!(Foo::<i8>::instances(), 10);
-//!     assert_eq!(Foo::<u8>::instances(), 5);
+//!     assert_eq!(Foo::<i8>::instances(), 15);
+//!     assert_eq!(Foo::<u8>::instances(), 15);
 //! 
 //!     let _ = bar.drain(0..5);
 //! 
-//!     assert_eq!(Foo::<i8>::instances(), 5);
-//!     assert_eq!(Foo::<u8>::instances(), 5);
+//!     assert_eq!(Foo::<i8>::instances(), 10);
+//!     assert_eq!(Foo::<u8>::instances(), 10);
 //! }
 //! ```
 
-use dashmap::DashMap;
-use once_cell::sync::Lazy;
-use std::any::Any;
-use std::any::TypeId;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-#[derive(Clone, Debug, Default)]
-struct Hasher;
-
-impl std::hash::BuildHasher for Hasher {
-    type Hasher = rustc_hash::FxHasher;
-
-    #[inline(always)]
-    fn build_hasher(&self) -> Self::Hasher {
-        rustc_hash::FxHasher::default()
-    }
-}
-
-/// A concurrent map from [`TypeId`] to population counts.
-pub struct Census {
-    counts: Lazy<DashMap<TypeId, &'static AtomicU64, Hasher>>,
-}
-
-impl Census {
-    pub const EMPTY: Self = Self {
-        counts: Lazy::new(|| DashMap::with_hasher(Hasher)),
-    };
-
-    fn instances<T: 'static>(&'static self) -> u64 {
-        self.counts
-            .get(&TypeId::of::<T>())
-            .map(|count| count.load(Ordering::SeqCst))
-            .unwrap_or(0)
-    }
-}
-
-/// A guard tracking the lifetime of an instance of `T`.
+/// A zero-sized guard that tracks the lifetime of an instance of `T`.
 /// 
 /// Constructing an `Instance<T>` increments the population count of `T`.
 /// Dropping an `Instance<T>` decrements the population count of `T`. 
-pub struct Instance<T> {
-    /// The number of instances of `T`
-    count: &'static AtomicU64,
-    _type: PhantomData<T>,
+#[repr(transparent)]
+pub struct Instance<T>
+where
+    T: Tabulate,
+{
+    _tabulated: PhantomData<T>,
 }
 
-impl<T> Instance<T> {
-    /// Construct a new lifetime tracker for an instance of type `T`.
-    pub fn new() -> Self
-    where
-        T: 'static + Tabulate,
-    {
-        let ty_id = TypeId::of::<T>();
-        Instance::from_count(
-            T::census()
-                .counts
-                .entry(ty_id)
-                .or_insert_with(|| Box::leak(Box::new(AtomicU64::new(0))))
-                .value(),
-        )
-    }
-
+impl<T> Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
-    fn from_count(census: &'static AtomicU64) -> Self {
-        census.fetch_add(1, Ordering::SeqCst);
+    pub fn new() -> Self
+    {
+        T::counter().fetch_add(1, Ordering::SeqCst);
         Instance {
-            count: census,
-            _type: PhantomData,
+            _tabulated: PhantomData,
         }
     }
 }
 
-impl<T> Clone for Instance<T> {
+impl<T> Clone for Instance<T>
+where
+    T: Tabulate
+{
     #[inline(always)]
     fn clone(&self) -> Self {
-        Self::from_count(self.count)
+        Self::new()
     }
 }
 
-impl<T> Drop for Instance<T> {
+impl<T> Drop for Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
     fn drop(&mut self) {
-        self.count.fetch_sub(1, Ordering::SeqCst);
+        T::counter().fetch_sub(1, Ordering::SeqCst);
     }
 }
 
-impl<T> std::hash::Hash for Instance<T> {
+impl<T> std::hash::Hash for Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
     fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
 }
 
-impl<T> Ord for Instance<T> {
+impl<T> Ord for Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
     fn cmp(&self, _: &Self) -> std::cmp::Ordering {
         std::cmp::Ordering::Equal
     }
 }
 
-impl<T> PartialOrd for Instance<T> {
+impl<T> PartialOrd for Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
     fn partial_cmp(&self, _: &Self) -> Option<std::cmp::Ordering> {
         Some(std::cmp::Ordering::Equal)
     }
 }
 
-impl<T> Eq for Instance<T> {}
+impl<T> Eq for Instance<T>
+where
+    T: Tabulate,
+{}
 
-impl<T> PartialEq for Instance<T> {
+impl<T> PartialEq for Instance<T>
+where
+    T: Tabulate,
+{
     #[inline(always)]
     fn eq(&self, _: &Self) -> bool {
         true
@@ -176,35 +152,36 @@ impl<T> PartialEq for Instance<T> {
 }
 
 /// Track the population of `Self`.
-pub trait Tabulate: Any + Sized {
-    fn census() -> &'static Census;
+pub trait Tabulate: Sized {
+    fn counter() -> &'static AtomicUsize;
 
     /// Produces the number of extant instances of `Self`.
-    fn instances() -> u64
+    fn instances() -> usize
     where
         Self: 'static,
     {
-        Self::census().instances::<Self>()
+        Self::counter().load(Ordering::SeqCst)
     }
 }
 
-/// Generates a correct implementation of [`Tabulate::census`].
+/// Generates a correct implementation of [`Tabulate::counter`].
 ///
 /// Use like:
 /// ```
-/// use type_census::{Census, Instance, Tabulate};
+/// use type_census::{counter, Instance, Tabulate};
 /// # pub struct Foo<T> { _v: T }
 /// 
 /// impl<T: 'static> Tabulate for Foo<T> {
-///     Census!();
+///     counter!();
 /// }
 /// ```
 #[macro_export]
-macro_rules! Census {
+macro_rules! counter {
     () => {
-        fn census() -> &'static type_census::Census {
-            static CENSUS: type_census::Census = type_census::Census::EMPTY;
-            &CENSUS
+        fn counter() -> &'static std::sync::atomic::AtomicUsize {
+            static COUNTER: std::sync::atomic::AtomicUsize = 
+                std::sync::atomic::AtomicUsize::new(0);
+            &COUNTER
         }
     };
 }

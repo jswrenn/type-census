@@ -4,7 +4,7 @@ Track the number of extant instances of your types.
 
 ```rust
 // 1. import these three items:
-use type_census::{Census, Instance, Tabulate};
+use type_census::{counter, Instance, Tabulate};
 
 #[derive(Clone)]
 pub struct Foo<T> {
@@ -33,30 +33,29 @@ impl<T> Foo<T>
 }
 
 // 5. finally, implement `Tabulate` like this:
-impl<T: 'static> Tabulate for Foo<T> {
-    Census!();
+impl<T> Tabulate for Foo<T> {
+    counter!();
 }
 
 fn main() {
-    use std::iter;
-
     // you can now query the number of extant instances of `Foo`!
     assert_eq!(Foo::<i8>::instances(), 0);
     assert_eq!(Foo::<u8>::instances(), 0);
 
-    let mut bar: Vec<Foo<i8>> = iter::repeat(Foo::new(0i8)).take(10).collect();
+    // the same counter is shared for all generic instantiations
+    let mut bar: Vec<Foo<i8>> = vec![Foo::new(0i8); 10];
 
     assert_eq!(Foo::<i8>::instances(), 10);
-    assert_eq!(Foo::<u8>::instances(), 0);
+    assert_eq!(Foo::<u8>::instances(), 10);
 
-    let _baz: Vec<Foo<u8>> = iter::repeat(Foo::new(0u8)).take(5).collect();
+    let _baz: Vec<Foo<u8>> = vec![Foo::new(0u8); 5];
 
-    assert_eq!(Foo::<i8>::instances(), 10);
-    assert_eq!(Foo::<u8>::instances(), 5);
+    assert_eq!(Foo::<i8>::instances(), 15);
+    assert_eq!(Foo::<u8>::instances(), 15);
 
     let _ = bar.drain(0..5);
 
-    assert_eq!(Foo::<i8>::instances(), 5);
-    assert_eq!(Foo::<u8>::instances(), 5);
+    assert_eq!(Foo::<i8>::instances(), 10);
+    assert_eq!(Foo::<u8>::instances(), 10);
 }
 ```
