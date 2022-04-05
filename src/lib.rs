@@ -88,6 +88,16 @@ where
     }
 }
 
+impl<T> Default for Instance<T>
+where
+    T: Tabulate
+{
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> Clone for Instance<T>
 where
     T: Tabulate
