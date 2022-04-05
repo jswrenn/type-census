@@ -81,7 +81,7 @@ where
     #[inline(always)]
     pub fn new() -> Self
     {
-        T::counter().fetch_add(1, Ordering::SeqCst);
+        T::counter().fetch_add(1, Ordering::Relaxed);
         Instance {
             _tabulated: PhantomData,
         }
@@ -114,7 +114,7 @@ where
 {
     #[inline(always)]
     fn drop(&mut self) {
-        T::counter().fetch_sub(1, Ordering::SeqCst);
+        T::counter().fetch_sub(1, Ordering::Release);
     }
 }
 
