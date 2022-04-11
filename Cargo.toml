@@ -9,3 +9,6 @@ repository = "https://github.com/jswrenn/type-census"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+crossbeam-utils = { version = "0.8.8", default-features = false }
+num-traits = "0.2"
+type-census-derive = { version = "0.1.0", path = "derive" }

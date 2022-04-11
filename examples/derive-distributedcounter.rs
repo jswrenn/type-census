@@ -1,23 +1,25 @@
-// 1. import these three items:
-use type_census::{counter, Instance, Tabulate};
+// 1. import these two items:
+use type_census::{Instance, Tabulate};
 
-#[derive(Clone)]
+// 2. Derive `Tabulate`
+// This will count instances with a `DistributedCounter` with 32 buckets.
+#[derive(Clone, Tabulate)]
+#[Tabulate(Counter = "type_census::DistributedCounter<32>")]
 pub struct Foo<T> {
     v: T,
-    // 2. add a field of type `Instance<Self>`
+    // 3. add a field of type `Instance<Self>`
     _instance: Instance<Self>,
 }
 
-impl<T> Foo<T>
-{
+impl<T> Foo<T> {
     pub fn new(v: T) -> Self
     where
-        // 3. add a `Self: Tabulate` bound to constructors
+        // 4. add a `Self: Tabulate` bound to constructors
         Self: Tabulate,
     {
         Self {
             v,
-            // 4. and initialize your `Instance` field like so:
+            // 5. and initialize your `Instance` field like so:
             _instance: Instance::new(),
         }
     }
@@ -25,11 +27,6 @@ impl<T> Foo<T>
     pub fn v(self) -> T {
         self.v
     }
-}
-
-// 5. finally, implement `Tabulate` like this:
-impl<T> Tabulate for Foo<T> {
-    counter!();
 }
 
 fn main() {

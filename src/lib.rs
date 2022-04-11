@@ -1,71 +1,91 @@
 //! Track the number of extant instances of your types.
-//! 
+//!
 //! ## Example
 //! ```
-//! // 1. import these three items:
-//! use type_census::{counter, Instance, Tabulate};
-//! 
-//! #[derive(Clone)]
+//! // 1. import these two items:
+//! use type_census::{Instance, Tabulate};
+//!
+//! // 2. Derive `Tabulate`
+//! #[derive(Clone, Tabulate)]
 //! pub struct Foo<T> {
 //!     v: T,
-//!     // 2. add a field of type `Instance<Self>`
+//!     // 3. add a field of type `Instance<Self>`
 //!     _instance: Instance<Self>,
 //! }
-//! 
-//! impl<T> Foo<T>
-//! {
+//!
+//! impl<T> Foo<T> {
 //!     pub fn new(v: T) -> Self
 //!     where
-//!         // 3. add a `Self: Tabulate` bound to constructors
+//!         // 4. add a `Self: Tabulate` bound to constructors
 //!         Self: Tabulate,
 //!     {
 //!         Self {
 //!             v,
-//!             // 4. and initialize your `Instance` field like so:
+//!             // 5. and initialize your `Instance` field like so:
 //!             _instance: Instance::new(),
 //!         }
 //!     }
-//! 
+//!
 //!     pub fn v(self) -> T {
 //!         self.v
 //!     }
 //! }
-//! 
-//! // 5. finally, implement `Tabulate` like this:
-//! impl<T> Tabulate for Foo<T> {
-//!     counter!();
-//! }
-//! 
+//!
 //! fn main() {
 //!     // you can now query the number of extant instances of `Foo`!
 //!     assert_eq!(Foo::<i8>::instances(), 0);
 //!     assert_eq!(Foo::<u8>::instances(), 0);
-//! 
+//!
 //!     // the same counter is shared for all generic instantiations
 //!     let mut bar: Vec<Foo<i8>> = vec![Foo::new(0i8); 10];
-//! 
+//!
 //!     assert_eq!(Foo::<i8>::instances(), 10);
 //!     assert_eq!(Foo::<u8>::instances(), 10);
-//! 
+//!
 //!     let _baz: Vec<Foo<u8>> = vec![Foo::new(0u8); 5];
-//! 
+//!
 //!     assert_eq!(Foo::<i8>::instances(), 15);
 //!     assert_eq!(Foo::<u8>::instances(), 15);
-//! 
+//!
 //!     let _ = bar.drain(0..5);
-//! 
+//!
 //!     assert_eq!(Foo::<i8>::instances(), 10);
 //!     assert_eq!(Foo::<u8>::instances(), 10);
 //! }
 //! ```
+#![deny(missing_docs)]
 
+use num_traits::identities::one;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicUsize, Ordering};
+
+pub mod counter;
+
+use counter::Counter;
+
+/// Automatically derive the implementation of [`Tabulate`].
+///
+/// By default, this uses [`counter::RelaxedCounter`] to count the instances.
+/// You can use a different counter type like so:
+/// ```
+/// // 1. import these two items:
+/// use type_census::{Instance, Tabulate};
+/// 
+/// // 2. Derive `Tabulate`
+/// // This will count instances with a `DistributedCounter` with 32 buckets.
+/// #[derive(Clone, Tabulate)]
+/// #[Tabulate(Counter = "type_census::counter::DistributedCounter<32>")]
+/// pub struct Foo<T> {
+///     v: T,
+///     // 3. add a field of type `Instance<Self>`
+///     _instance: Instance<Self>,
+/// }
+/// ```
+pub use type_census_derive::Tabulate;
 
 /// A zero-sized guard that tracks the lifetime of an instance of `T`.
-/// 
+///
 /// Constructing an `Instance<T>` increments the population count of `T`.
-/// Dropping an `Instance<T>` decrements the population count of `T`. 
+/// Dropping an `Instance<T>` decrements the population count of `T`.
 #[repr(transparent)]
 pub struct Instance<T>
 where
@@ -78,19 +98,29 @@ impl<T> Instance<T>
 where
     T: Tabulate,
 {
+    /// Constructs a new `Instance<T>`, representing the extant lifetime of
+    /// an instance of `T`.
     #[inline(always)]
-    pub fn new() -> Self
-    {
-        T::counter().fetch_add(1, Ordering::Relaxed);
+    pub fn new() -> Self {
+        T::counter().add_assign(one());
         Instance {
             _tabulated: PhantomData,
         }
     }
 }
 
+impl<T> std::fmt::Debug for Instance<T>
+where
+    T: Tabulate,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>()).finish()
+    }
+}
+
 impl<T> Default for Instance<T>
 where
-    T: Tabulate
+    T: Tabulate,
 {
     #[inline(always)]
     fn default() -> Self {
@@ -100,7 +130,7 @@ where
 
 impl<T> Clone for Instance<T>
 where
-    T: Tabulate
+    T: Tabulate,
 {
     #[inline(always)]
     fn clone(&self) -> Self {
@@ -114,7 +144,7 @@ where
 {
     #[inline(always)]
     fn drop(&mut self) {
-        T::counter().fetch_sub(1, Ordering::Release);
+        T::counter().sub_assign(one());
     }
 }
 
@@ -146,10 +176,7 @@ where
     }
 }
 
-impl<T> Eq for Instance<T>
-where
-    T: Tabulate,
-{}
+impl<T> Eq for Instance<T> where T: Tabulate {}
 
 impl<T> PartialEq for Instance<T>
 where
@@ -163,35 +190,14 @@ where
 
 /// Track the population of `Self`.
 pub trait Tabulate: Sized {
-    fn counter() -> &'static AtomicUsize;
+    /// The type of the counter used to track instances of `Self`.
+    type Counter: Counter;
 
-    /// Produces the number of extant instances of `Self`.
-    fn instances() -> usize
-    where
-        Self: 'static,
-    {
-        Self::counter().load(Ordering::SeqCst)
+    /// Produces a reference to the counter tracking instances of `Self`.
+    fn counter() -> &'static Self::Counter;
+
+    /// Produces the number of extant instances of `T`.
+    fn instances() -> <Self::Counter as Counter>::Primitive {
+        Self::counter().fetch()
     }
-}
-
-/// Generates a correct implementation of [`Tabulate::counter`].
-///
-/// Use like:
-/// ```
-/// use type_census::{counter, Instance, Tabulate};
-/// # pub struct Foo<T> { _v: T }
-/// 
-/// impl<T: 'static> Tabulate for Foo<T> {
-///     counter!();
-/// }
-/// ```
-#[macro_export]
-macro_rules! counter {
-    () => {
-        fn counter() -> &'static std::sync::atomic::AtomicUsize {
-            static COUNTER: std::sync::atomic::AtomicUsize = 
-                std::sync::atomic::AtomicUsize::new(0);
-            &COUNTER
-        }
-    };
 }

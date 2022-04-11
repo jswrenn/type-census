@@ -1,0 +1,16 @@
+[package]
+name = "type-census-derive"
+version = "0.1.0"
+edition = "2021"
+description = "Proc-macro derive for type-census."
+license = "MIT/Apache-2.0"
+repository = "https://github.com/jswrenn/type-census"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+darling = "0.13.4"
+proc-macro2 = "1.0"
+quote = "1.0.18"
+syn = { version = "1.0", features = ["full"] }

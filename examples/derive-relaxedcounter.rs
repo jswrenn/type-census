@@ -1,12 +1,8 @@
-# type-census
-
-Track the number of extant instances of your types.
-
-```rust
 // 1. import these two items:
 use type_census::{Instance, Tabulate};
 
 // 2. Derive `Tabulate`
+// This will count instances with `RelaxedCounter`.
 #[derive(Clone, Tabulate)]
 pub struct Foo<T> {
     v: T,
@@ -53,4 +49,3 @@ fn main() {
     assert_eq!(Foo::<i8>::instances(), 10);
     assert_eq!(Foo::<u8>::instances(), 10);
 }
-```
