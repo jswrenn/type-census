@@ -58,6 +58,31 @@ impl Counter for RelaxedCounter {
     }
 }
 
+#[cfg(test)]
+mod relaxed_counter {
+    use super::*;
+
+    #[test]
+    fn zero() {
+        let counter = RelaxedCounter::ZERO;
+        assert_eq!(counter.fetch(), 0);
+    }
+
+    #[test]
+    fn increment() {
+        let counter = RelaxedCounter::ZERO;
+        counter.add_assign(1);
+        assert_eq!(counter.fetch(), 1);
+    }
+
+    #[test]
+    fn decrement() {
+        let counter = RelaxedCounter::ZERO;
+        counter.sub_assign(1);
+        assert_eq!(counter.fetch(), -1);
+    }
+}
+
 /// A counter that minimizes slowdowns from contenation at the cost of increased
 /// memory usage.
 ///
@@ -132,5 +157,30 @@ impl<const BUCKETS: usize> Counter for DistributedCounter<BUCKETS> {
             sum = sum.wrapping_add(counter.load(Ordering::SeqCst));
         }
         sum
+    }
+}
+
+#[cfg(test)]
+mod distributed_counter {
+    use super::*;
+
+    #[test]
+    fn zero() {
+        let counter = DistributedCounter::<1>::ZERO;
+        assert_eq!(counter.fetch(), 0);
+    }
+
+    #[test]
+    fn increment() {
+        let counter = DistributedCounter::<1>::ZERO;
+        counter.add_assign(1);
+        assert_eq!(counter.fetch(), 1);
+    }
+
+    #[test]
+    fn decrement() {
+        let counter = DistributedCounter::<1>::ZERO;
+        counter.sub_assign(1);
+        assert_eq!(counter.fetch(), -1);
     }
 }
