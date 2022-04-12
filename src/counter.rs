@@ -117,7 +117,7 @@ impl<const BUCKETS: usize> DistributedCounter<BUCKETS> {
     #[inline(always)]
     fn try_add_assign(bucket: &AtomicIsize, n: isize) -> Result<isize, isize> {
         let count = bucket.load(Ordering::SeqCst);
-        bucket.compare_exchange(
+        bucket.compare_exchange_weak(
             count,
             count.wrapping_add(n),
             Ordering::SeqCst,
@@ -180,6 +180,62 @@ mod distributed_counter {
     #[test]
     fn decrement() {
         let counter = DistributedCounter::<1>::ZERO;
+        counter.sub_assign(1);
+        assert_eq!(counter.fetch(), -1);
+    }
+}
+
+/// A [`Counter`] useful for testing.
+///
+/// This counter uses [`Ordering::SeqCst`] for [`Counter::add_assign`],
+/// [`Counter::sub_assign`] and [`Counter::fetch`].
+#[repr(transparent)]
+pub struct SeqCstCounter {
+    counter: CachePadded<AtomicIsize>,
+}
+
+impl Counter for SeqCstCounter {
+    type Primitive = isize;
+    const ZERO: Self = Self {
+        counter: CachePadded::new(AtomicIsize::new(0)),
+    };
+
+    #[inline(always)]
+    fn add_assign(&self, n: isize) {
+        let _ = self.counter.fetch_add(n, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    fn sub_assign(&self, n: isize) {
+        let _ = self.counter.fetch_sub(n, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    fn fetch(&self) -> isize {
+        self.counter.load(Ordering::SeqCst)
+    }
+}
+
+#[cfg(test)]
+mod seqcst_counter {
+    use super::*;
+
+    #[test]
+    fn zero() {
+        let counter = SeqCstCounter::ZERO;
+        assert_eq!(counter.fetch(), 0);
+    }
+
+    #[test]
+    fn increment() {
+        let counter = SeqCstCounter::ZERO;
+        counter.add_assign(1);
+        assert_eq!(counter.fetch(), 1);
+    }
+
+    #[test]
+    fn decrement() {
+        let counter = SeqCstCounter::ZERO;
         counter.sub_assign(1);
         assert_eq!(counter.fetch(), -1);
     }
