@@ -4,7 +4,7 @@ use type_census::{Instance, Tabulate};
 // 2. Derive `Tabulate`
 // This will count instances with a `DistributedCounter` with 32 buckets.
 #[derive(Clone, Tabulate)]
-#[Tabulate(Counter = "type_census::DistributedCounter<32>")]
+#[Tabulate(Counter = "type_census::counter::DistributedCounter<32>")]
 pub struct Foo<T> {
     v: T,
     // 3. add a field of type `Instance<Self>`

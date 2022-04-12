@@ -28,7 +28,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         impl #impl_generics type_census::Tabulate for #ident #ty_generics #where_clause {
             type Counter = #counter_ty;
             fn counter() -> &'static #counter_ty {
-                static COUNTER: #counter_ty = <#counter_ty as type_census::Counter>::ZERO;
+                static COUNTER: #counter_ty = <#counter_ty as type_census::counter::Counter>::ZERO;
                 &COUNTER
             }
         }
